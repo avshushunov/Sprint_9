@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install allure-pytest
+
+      - name: Pull Selenoid browser images
+        run: |
+          docker pull selenoid/chrome:128.0
+
+      - name: Start Selenoid
+        run: |
+          docker run -d --name selenoid \
+            -p 4444:4444 \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v ${{ github.workspace }}/browser.json:/etc/selenoid/browser.json \
+            aerokube/selenoid:latest \
+            -conf /etc/selenoid/browser.json
+
+      - name: Wait for Selenoid
+        run: |
+          sleep 5
+          curl -s http://localhost:4444/status || echo "Waiting for Selenoid..."
+
+      - name: Run tests
+        env:
+          SELENOID_URL: http://localhost:4444/wd/hub
+        run: |
+          pytest --alluredir=allure_results
+
+      - name: Upload Allure Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure_results
+          path: allure_results
